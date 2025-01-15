@@ -29,3 +29,4 @@ Thumbs.db
 # Project specific
 tmp/
 logs/
+build-errors.log
