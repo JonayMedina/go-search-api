@@ -41,6 +41,5 @@ func setupAPIRoutes(router *gin.Engine, handlers *handlers.Handlers) {
 
 		api.GET("/get-users", handlers.GetUsers)
 		api.GET("/search", handlers.Search)
-		api.GET("/history", handlers.SearchHistory)
 	}
 }
