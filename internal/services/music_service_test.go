@@ -34,7 +34,7 @@ func TestMusicService_SearchMusic(t *testing.T) {
 	mockProvider.On("Search", ctx, "test query").Return(expectedSongs, nil)
 
 	service := &MusicService{
-		providers: []models.Provider{mockProvider},
+		providers: []models.ProviderInterface{mockProvider},
 	}
 
 	songs, err := service.SearchMusic(ctx, "test query")

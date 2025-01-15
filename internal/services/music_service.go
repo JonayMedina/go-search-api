@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -22,14 +21,14 @@ import (
 type MusicService struct {
 	mongoClient *mongo.Client
 	redisClient *redis.Client
-	providers   []models.Provider
+	providers   []models.ProviderInterface
 }
 
 func NewMusicService(mongoClient *mongo.Client, redisClient *redis.Client) *MusicService {
 	service := &MusicService{
 		mongoClient: mongoClient,
 		redisClient: redisClient,
-		providers:   []models.Provider{},
+		providers:   []models.ProviderInterface{},
 	}
 
 	// Registrar proveedores
@@ -37,162 +36,181 @@ func NewMusicService(mongoClient *mongo.Client, redisClient *redis.Client) *Musi
 	return service
 }
 
-func (s *MusicService) registerProviders() {
-	// iTunes Provider
-	s.providers = append(s.providers, models.Provider{
-		Name:    "iTunes",
-		BaseURL: "https://itunes.apple.com/search",
-		Type:    models.ProviderTypeJSON,
-		SearchFn: func(ctx context.Context, query string) ([]models.Song, error) {
-			return s.searchITunes(ctx, query)
-		},
+func (service *MusicService) registerProviders() {
+	service.providers = append(service.providers, &models.Provider{
+		Name:     "iTunes",
+		BaseURL:  "https://itunes.apple.com/search",
+		Type:     models.ProviderTypeJSON,
+		SearchFn: service.searchITunes,
 	})
 
 	// ChartLyrics Provider
-	s.providers = append(s.providers, models.Provider{
+	service.providers = append(service.providers, models.Provider{
 		Name:    "ChartLyrics",
 		BaseURL: "http://api.chartlyrics.com/apiv1.asmx/SearchLyric",
 		Type:    models.ProviderTypeSOAP,
 		SearchFn: func(ctx context.Context, query string) ([]models.Song, error) {
-			return s.searchChartLyrics(ctx, query)
+			return service.searchChartLyrics(query)
 		},
 	})
 }
 
-func (s *MusicService) searchITunes(ctx context.Context, query string) ([]models.Song, error) {
-	// Construir URL con parámetros
-	url := fmt.Sprintf("%s?term=%s&media=music", s.providers[0].BaseURL, url.QueryEscape(query))
+func (service *MusicService) searchITunes(ctx context.Context, query string) ([]models.Song, error) {
+	baseURL := "https://itunes.apple.com/search"
+	url := fmt.Sprintf("%s?term=%s&media=music", baseURL, url.QueryEscape(query))
 
-	// Realizar petición HTTP
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creando request para iTunes: %w", err)
 	}
+	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("Error en petición a iTunes: %v", err)
 		return nil, fmt.Errorf("error en petición a iTunes: %w", err)
 	}
 	defer resp.Body.Close()
 
-	log.Println(resp.Body)
-
 	// Estructura para respuesta de iTunes
 	var response struct {
-		Results []struct {
-			TrackName      string `json:"trackName"`
-			ArtistName     string `json:"artistName"`
-			CollectionName string `json:"collectionName"`
-			PreviewURL     string `json:"previewUrl"`
+		ResultCount int `json:"resultCount"`
+		Results     []struct {
+			TrackName      string  `json:"trackName"`
+			ArtistName     string  `json:"artistName"`
+			CollectionName string  `json:"collectionName"`
+			PreviewURL     string  `json:"previewUrl"`
+			ArtworkUrl100  string  `json:"artworkUrl100"`
+			TrackPrice     float64 `json:"trackPrice"`
+			ReleaseDate    string  `json:"releaseDate"`
+			PrimaryGenre   string  `json:"primaryGenreName"`
 		} `json:"results"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decodificando respuesta de iTunes: %w", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error leyendo respuesta: %v", err)
+		return nil, fmt.Errorf("error leyendo respuesta: %w", err)
 	}
 
-	// Convertir resultados al modelo Song
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Printf("Error decodificando JSON: %v", err)
+		return nil, fmt.Errorf("error decodificando JSON: %w", err)
+	}
+
 	var songs []models.Song
 	for _, item := range response.Results {
-		songs = append(songs, models.Song{
-			Name:       item.TrackName,
-			Artist:     item.ArtistName,
-			Album:      item.CollectionName,
-			Provider:   "iTunes",
-			PreviewURL: item.PreviewURL,
-			Origin:     "iTunes",
-		})
+		if item.TrackName != "" { // Ignorar resultados sin nombre
+			songs = append(songs, models.Song{
+				Name:        item.TrackName,
+				Artist:      item.ArtistName,
+				Album:       item.CollectionName,
+				Provider:    "iTunes",
+				PreviewURL:  item.PreviewURL,
+				ImageURL:    item.ArtworkUrl100,
+				Price:       item.TrackPrice,
+				ReleaseDate: item.ReleaseDate,
+				Genre:       item.PrimaryGenre,
+				Origin:      "iTunes",
+			})
+		}
 	}
 
+	log.Printf("iTunes encontró %d canciones", len(songs))
 	return songs, nil
 }
 
-func (s *MusicService) searchChartLyrics(ctx context.Context, query string) ([]models.Song, error) {
-	// Dividir la consulta en artista y canción (asumiendo formato "artista - canción")
+func (service *MusicService) searchChartLyrics(query string) ([]models.Song, error) {
+	baseURL := "http://api.chartlyrics.com/apiv1.asmx/SearchLyric"
+
+	// Dividir la consulta en artista y canción
 	parts := strings.Split(query, "-")
 	artist := strings.TrimSpace(query)
-	song := ""
+	song := query
 	if len(parts) > 1 {
 		artist = strings.TrimSpace(parts[0])
 		song = strings.TrimSpace(parts[1])
 	}
 
-	// Construir URL con parámetros
 	url := fmt.Sprintf("%s?artist=%s&song=%s",
-		s.providers[1].BaseURL,
+		baseURL,
 		url.QueryEscape(artist),
 		url.QueryEscape(song))
 
-	// Realizar petición HTTP
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.Get(url)
+
 	if err != nil {
+		log.Printf("Error creando request para ChartLyrics: %v", err)
 		return nil, fmt.Errorf("error creando request para ChartLyrics: %w", err)
 	}
+	defer req.Body.Close()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	if req.StatusCode != http.StatusOK {
+		log.Printf("Status error: %v", req.StatusCode)
+		return nil, fmt.Errorf("status error: %v", req.StatusCode)
+	}
+
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error en petición a ChartLyrics: %w", err)
-	}
-	defer resp.Body.Close()
-
-	log.Println(resp.Body)
-
-	// Estructura para respuesta de ChartLyrics
-	var response struct {
-		SearchLyricResult struct {
-			SearchLyricResponse []struct {
-				Song    string `xml:"Song"`
-				Artist  string `xml:"Artist"`
-				LyricId string `xml:"LyricId"`
-				SongUrl string `xml:"SongUrl"`
-			} `xml:"SearchLyricResult"`
-		} `xml:"SearchLyricResult"`
+		log.Printf("Error leyendo respuesta: %v", err)
+		return nil, fmt.Errorf("error leyendo respuesta: %w", err)
 	}
 
-	if err := xml.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decodificando respuesta de ChartLyrics: %w", err)
+	// Estructura para la respuesta XML
+	var response models.ChartLyricsResponse
+
+	if err := xml.Unmarshal(body, &response); err != nil {
+		// Si hay error al decodificar pero tenemos respuesta, podría ser una respuesta vacía
+		if strings.TrimSpace(string(body)) == "" {
+			return []models.Song{}, nil
+		}
+		return nil, fmt.Errorf("error decodificando XML: %w", err)
 	}
 
-	// Convertir resultados al modelo Song
 	var songs []models.Song
-	for _, item := range response.SearchLyricResult.SearchLyricResponse {
-		songs = append(songs, models.Song{
-			Name:       item.Song,
-			Artist:     item.Artist,
-			Provider:   "ChartLyrics",
-			PreviewURL: item.SongUrl,
-			Origin:     "ChartLyrics",
-		})
+	for _, result := range response.SearchLyricResult {
+		if result.Artist != "" {
+			songs = append(songs, models.Song{
+				Name:       result.Song,
+				Artist:     result.Artist,
+				Provider:   "ChartLyrics",
+				PreviewURL: result.SongURL,
+				Origin:     "ChartLyrics",
+			})
+		}
 	}
 
+	log.Printf("ChartLyrics encontró %d canciones", len(songs))
 	return songs, nil
 }
 
-func (s *MusicService) SearchMusic(ctx context.Context, query string) ([]models.Song, error) {
-	// Validar entrada
-	if query == "" {
-		return nil, errors.New("la consulta de búsqueda no puede estar vacía")
-	}
+func (service *MusicService) SearchMusic(ctx context.Context, query string) ([]models.Song, error) {
+	log.Printf("Iniciando búsqueda de música con query: %s", query)
 
-	// Intentar obtener del caché
-	songs, err := s.getFromCache(ctx, query)
-	if err == nil {
+	songs, err := service.getFromCache(ctx, query)
+	log.Printf("redis songs: %d ", len(songs))
+
+	if err == nil && len(songs) > 0 {
 		return songs, nil
 	}
 
-	// Búsqueda paralela en APIs
-	songs, err = s.searchInParallel(ctx, query)
+	log.Println("Realizando búsqueda en APIs externas")
+	songs, err = service.searchInParallel(ctx, query)
 	if err != nil {
+		log.Printf("Error en búsqueda paralela: %v", err)
 		return nil, fmt.Errorf("error en búsqueda paralela: %w", err)
 	}
 
-	// Guardar resultados
-	if err := s.saveResults(ctx, query, songs); err != nil {
-		log.Printf("Error al guardar resultados: %v", err)
+	if err := service.saveToCache(ctx, query, songs); err != nil {
+		log.Printf("Error guardando resultados en caché: %v", err)
 	}
 
+	// if err := service.saveResults(ctx, query, songs); err != nil {
+	// 	log.Printf("Error guardando resultados: %v", err)
+	// }
+
+	log.Printf("Búsqueda completada. Encontradas %d canciones", len(songs))
 	return songs, nil
 }
 
@@ -201,10 +219,9 @@ func (service *MusicService) searchInParallel(ctx context.Context, query string)
 	results := make(chan []models.Song, 3)
 	errors := make(chan error, 3)
 
-	// Ejecutar búsquedas en paralelo
 	for _, provider := range service.providers {
 		wg.Add(1)
-		go func(p models.Provider) {
+		go func(p models.ProviderInterface) {
 			defer wg.Done()
 			songs, err := p.Search(ctx, query)
 			if err != nil {
@@ -248,22 +265,44 @@ func (service *MusicService) getFromCache(ctx context.Context, query string) ([]
 	return nil, nil
 }
 
-func (service *MusicService) saveResults(ctx context.Context, query string, songs []models.Song) error {
-	if len(songs) == 0 {
-		return nil
+func (service *MusicService) saveToCache(ctx context.Context, query string, songs []models.Song) error {
+	cacheKey := "search:" + query
+	cacheValue, err := json.Marshal(songs)
+	if err != nil {
+		return fmt.Errorf("error serializando resultados a JSON: %w", err)
 	}
-
-	collection := service.mongoClient.Database("musicdb").Collection("searches")
-
-	searchRecord := map[string]interface{}{
-		"query":     query,
-		"songs":     songs,
-		"timestamp": time.Now(),
-	}
-
-	_, err := collection.InsertOne(ctx, searchRecord)
-	return err
+	return service.redisClient.Set(ctx, cacheKey, cacheValue, 0).Err()
 }
+
+// func (service *MusicService) saveResults(ctx context.Context, query string, songs []models.Song) error {
+// 	if len(songs) == 0 {
+// 		return nil
+// 	}
+
+// 	collection := service.mongoClient.Database("musicdb").Collection("searches")
+
+// 	// Primero eliminamos búsquedas anteriores con el mismo query
+// 	_, err := collection.DeleteMany(ctx, map[string]interface{}{
+// 		"query": query,
+// 	})
+// 	if err != nil {
+// 		return fmt.Errorf("error eliminando búsquedas anteriores: %w", err)
+// 	}
+
+// 	// Guardamos la nueva búsqueda
+// 	searchRecord := map[string]interface{}{
+// 		"query":     query,
+// 		"songs":     songs,
+// 		"timestamp": time.Now(),
+// 	}
+
+// 	_, err = collection.InsertOne(ctx, searchRecord)
+// 	if err != nil {
+// 		return fmt.Errorf("error guardando nueva búsqueda: %w", err)
+// 	}
+
+// 	return nil
+// }
 
 type MusicServiceInterface interface {
 	SearchMusic(ctx context.Context, query string) ([]models.Song, error)

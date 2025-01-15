@@ -15,18 +15,18 @@ func NewMusicHandler(service *services.MusicService) *MusicHandler {
 	return &MusicHandler{service: service}
 }
 
-func (h *MusicHandler) Search(c *gin.Context) {
-	query := c.Query("q")
+func (musicHandler *MusicHandler) Search(ctx *gin.Context) {
+	query := ctx.Query("q")
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter 'q' is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter 'q' is required"})
 		return
 	}
 
-	songs, err := h.service.SearchMusic(c.Request.Context(), query)
+	songs, err := musicHandler.service.SearchMusic(ctx.Request.Context(), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, songs)
+	ctx.JSON(http.StatusOK, songs)
 }

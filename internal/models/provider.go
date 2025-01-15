@@ -21,3 +21,7 @@ type Provider struct {
 func (p Provider) Search(ctx context.Context, query string) ([]Song, error) {
 	return p.SearchFn(ctx, query)
 }
+
+type ProviderInterface interface {
+	Search(ctx context.Context, query string) ([]Song, error)
+}

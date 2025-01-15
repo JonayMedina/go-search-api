@@ -16,11 +16,15 @@ type User struct {
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
 
-func (u *User) HashPassword() error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+func (user *User) HashPassword() error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	u.Password = string(hashedPassword)
+	user.Password = string(hashedPassword)
 	return nil
+}
+
+func (user *User) ComparePassword(password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) == nil
 }
