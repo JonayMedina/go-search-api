@@ -15,7 +15,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		tokenString := ctx.GetHeader("Authorization")
 		if tokenString == "" {
 			log.Println("Token no proporcionado")
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is required"})
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is required!!"})
 			ctx.Abort()
 			return
 		}

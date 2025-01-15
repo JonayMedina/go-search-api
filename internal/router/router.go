@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/JonayMedina/api-music/internal/middleware"
 	"github.com/JonayMedina/go-search-api/internal/cors"
 	"github.com/JonayMedina/go-search-api/internal/handlers"
+	"github.com/JonayMedina/go-search-api/internal/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,7 +29,6 @@ func setupHealthRoutes(router *gin.Engine, handlers *handlers.Handlers) {
 func setupAuthRoutes(router *gin.Engine, handlers *handlers.Handlers) {
 	auth := router.Group("/auth")
 	{
-		auth.GET("/get-users", handlers.GetUsers)
 		auth.POST("/login", handlers.Login)
 		auth.POST("/register", handlers.Register)
 	}
@@ -39,6 +38,8 @@ func setupAPIRoutes(router *gin.Engine, handlers *handlers.Handlers) {
 	api := router.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
+
+		api.GET("/get-users", handlers.GetUsers)
 		api.GET("/search", handlers.Search)
 		api.GET("/history", handlers.SearchHistory)
 	}
