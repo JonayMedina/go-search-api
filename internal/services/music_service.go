@@ -58,6 +58,7 @@ func (service *MusicService) registerProviders() {
 func (service *MusicService) searchITunes(ctx context.Context, query string) ([]models.Song, error) {
 	baseURL := "https://itunes.apple.com/search"
 	url := fmt.Sprintf("%s?term=%s&media=music", baseURL, url.QueryEscape(query))
+	log.Printf("url: %v", url)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -138,6 +139,8 @@ func (service *MusicService) searchChartLyrics(query string) ([]models.Song, err
 		url.QueryEscape(artist),
 		url.QueryEscape(song))
 
+	log.Printf("url: %v", url)
+
 	req, err := http.Get(url)
 
 	if err != nil {
@@ -168,6 +171,8 @@ func (service *MusicService) searchChartLyrics(query string) ([]models.Song, err
 		return nil, fmt.Errorf("error decodificando XML: %w", err)
 	}
 
+	log.Printf("response: %v", response.SearchLyricResult)
+
 	var songs []models.Song
 	for _, result := range response.SearchLyricResult {
 		if result.Artist != "" {
@@ -188,15 +193,14 @@ func (service *MusicService) searchChartLyrics(query string) ([]models.Song, err
 func (service *MusicService) SearchMusic(ctx context.Context, query string) ([]models.Song, error) {
 	log.Printf("Iniciando búsqueda de música con query: %s", query)
 
-	songs, err := service.getFromCache(ctx, query)
-	log.Printf("redis songs: %d ", len(songs))
-
-	if err == nil && len(songs) > 0 {
-		return songs, nil
-	}
+	// songs, err := service.getFromCache(ctx, query)
+	// log.Printf("redis songs: %d ", len(songs))
+	// if err == nil && len(songs) > 0 {
+	// 	return songs, nil
+	// }
 
 	log.Println("Realizando búsqueda en APIs externas")
-	songs, err = service.searchInParallel(ctx, query)
+	songs, err := service.searchInParallel(ctx, query)
 	if err != nil {
 		log.Printf("Error en búsqueda paralela: %v", err)
 		return nil, fmt.Errorf("error en búsqueda paralela: %w", err)

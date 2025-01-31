@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/joho/godotenv"
@@ -31,6 +32,14 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{}
+
+	cfg.Server.Port = os.Getenv("PORT")
+	cfg.MongoDB.URI = os.Getenv("MONGODB_URI")
+	cfg.MongoDB.Database = os.Getenv("MONGODB_DATABASE")
+	cfg.Redis.URI = os.Getenv("REDIS_URI")
+	cfg.JWT.Secret = os.Getenv("JWT_SECRET")
+
+	log.Printf("config: %v", cfg)
 	if err := env.Parse(cfg); err != nil {
 		return nil, fmt.Errorf("error al parsear configuración: %v", err)
 	}

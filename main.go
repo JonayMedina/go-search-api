@@ -29,7 +29,9 @@ func main() {
 	r := router.SetupRouter(handlers)
 
 	log.Printf("Servidor iniciado en el puerto %s", cfg.Server.Port)
-	if err := r.Run(cfg.Server.Port); err != nil {
+
+	err = r.Run(":" + cfg.Server.Port)
+	if err != nil {
 		log.Fatal("Error iniciando el servidor:", err)
 	}
 }
