@@ -11,7 +11,7 @@ import (
 
 type Config struct {
 	Server struct {
-		Port string `env:"PORT" envDefault:":8080"`
+		Port string `env:"PORT" envDefault:"8080"`
 	}
 	MongoDB struct {
 		URI      string `env:"MONGODB_URI" envDefault:"mongodb://localhost:27017"`
@@ -45,10 +45,11 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Imprimir configuración cargada (para debugging)
-	log.Printf("Configuración cargada: MongoDB URI=%s, Database=%s, Redis URI=%s",
+	log.Printf("Configuración cargada: MongoDB URI=%s, Database=%s, Redis URI=%s, Server Port=%s",
 		cfg.MongoDB.URI,
 		cfg.MongoDB.Database,
-		cfg.Redis.URI)
+		cfg.Redis.URI,
+		cfg.Server.Port)
 
 	// Validar configuración mínima
 	if cfg.MongoDB.URI == "" {

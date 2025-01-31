@@ -16,7 +16,6 @@ func SetupRouter(handlers *handlers.Handlers) *gin.Engine {
 	router.Use(cors.Default())
 
 	setupHealthRoutes(router, handlers)
-	setupAuthRoutes(router, handlers)
 	setupAPIRoutes(router, handlers)
 
 	return router
@@ -26,16 +25,14 @@ func setupHealthRoutes(router *gin.Engine, handlers *handlers.Handlers) {
 	router.GET("/health", handlers.HealthCheck)
 }
 
-func setupAuthRoutes(router *gin.Engine, handlers *handlers.Handlers) {
-	auth := router.Group("/auth")
+func setupAPIRoutes(router *gin.Engine, handlers *handlers.Handlers) {
+	api := router.Group("/api")
+
+	auth := api.Group("/auth")
 	{
 		auth.POST("/login", handlers.Login)
 		auth.POST("/register", handlers.Register)
 	}
-}
-
-func setupAPIRoutes(router *gin.Engine, handlers *handlers.Handlers) {
-	api := router.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
 

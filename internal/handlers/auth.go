@@ -50,7 +50,13 @@ func (handlers *Handlers) Login(ctx *gin.Context) {
 
 	user, err := handlers.userService.GetUserByUsername(ctx.Request.Context(), req.Username)
 	if err != nil {
+
 		log.Printf("Error al obtener usuario: %v", err)
+		if err.Error() == "mongo: no documents in result" {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Usuario no encontrado"})
+			return
+		}
+
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error al obtener usuario"})
 		return
 	}
@@ -76,8 +82,10 @@ func (handlers *Handlers) Login(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"token": tokenString})
-	return
+	ctx.JSON(http.StatusOK, models.LoginResponse{
+		Token: tokenString,
+		User:  *user,
+	})
 }
 
 func (handlers *Handlers) Register(ctx *gin.Context) {
@@ -96,14 +104,13 @@ func (handlers *Handlers) Register(ctx *gin.Context) {
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		log.Printf("Error en binding JSON: %v", err)
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "Datos inválidos",
-			"details": map[string]string{
+		ctx.JSON(http.StatusBadRequest, models.RegisterResponse{
+			Message: "Datos inválidos",
+			Details: map[string]string{
 				"username": "Debe tener entre 3 y 30 caracteres alfanuméricos",
 				"password": "Debe tener al menos 6 caracteres",
 				"email":    "Debe ser un email válido",
 			},
-			"message": err.Error(),
 		})
 		return
 	}
@@ -113,8 +120,8 @@ func (handlers *Handlers) Register(ctx *gin.Context) {
 	if strings.TrimSpace(req.Username) == "" ||
 		strings.TrimSpace(req.Password) == "" ||
 		strings.TrimSpace(req.Email) == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "Los campos no pueden estar vacíos",
+		ctx.JSON(http.StatusBadRequest, models.RegisterResponse{
+			Message: "Los campos email, username y password son requeridos",
 		})
 		return
 	}
@@ -127,23 +134,19 @@ func (handlers *Handlers) Register(ctx *gin.Context) {
 
 	if err := handlers.userService.Register(ctx.Request.Context(), user); err != nil {
 		if err.Error() == "username or email already exists" {
-			ctx.JSON(http.StatusConflict, gin.H{
-				"error": "El usuario o email ya existe",
+			ctx.JSON(http.StatusConflict, models.RegisterResponse{
+				Message: "El usuario o email ya existe",
 			})
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Error al registrar usuario",
+		ctx.JSON(http.StatusInternalServerError, models.RegisterResponse{
+			Message: "Error al registrar usuario",
 		})
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, gin.H{
-		"message": "Usuario registrado exitosamente",
-		"user": gin.H{
-			"id":       user.ID.Hex(),
-			"username": user.Username,
-			"email":    user.Email,
-		},
+	ctx.JSON(http.StatusCreated, models.RegisterResponse{
+		Message: "Usuario registrado exitosamente",
+		User:    *user,
 	})
 }

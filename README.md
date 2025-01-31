@@ -17,7 +17,7 @@ Este proyecto es una API REST que permite buscar canciones a través de diferent
 
 ## Tecnologías
 
-- Go 1.21+
+- Go 1.23+
 - MongoDB
 - Redis
 - Gin Web Framework
@@ -63,6 +63,9 @@ go mod download
 4. Ejecutar para iniciar la aplicación
 bash
 go run cmd/api/main.go
+
+5. Acceder a la documentación de la API
+La documentación se encuentra en el directorio: services-definition/services/
 
 ## Endpoints
 

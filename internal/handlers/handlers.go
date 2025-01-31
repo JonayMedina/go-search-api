@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JonayMedina/go-search-api/internal/models"
 	"github.com/JonayMedina/go-search-api/internal/services"
 	"github.com/gin-gonic/gin"
 )
@@ -45,7 +46,9 @@ func (handlers *Handlers) Search(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, songs)
+	ctx.JSON(http.StatusOK, models.SearchResponse{
+		Songs: songs,
+	})
 }
 
 func (handlers *Handlers) SearchHistory(ctx *gin.Context) {
@@ -72,7 +75,9 @@ func (handlers *Handlers) GetUsers(ctx *gin.Context) {
 		return
 	}
 	log.Printf("Enviando respuesta con %d usuarios", len(users))
-	ctx.JSON(http.StatusOK, users)
+	ctx.JSON(http.StatusOK, models.GetUsersResponse{
+		Users: users,
+	})
 }
 
 func (handlers *Handlers) GetUserByUsername(ctx *gin.Context) {
